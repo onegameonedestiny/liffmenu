@@ -5,7 +5,6 @@
     <title>LIFF 初始化頁面</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <!-- LINE LIFF SDK -->
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
     <style>
@@ -34,6 +33,7 @@
 <button id="openBtn" disabled>開啟遊戲頁面</button>
 
 <script>
+
 const logBox = document.getElementById("logBox");
 const openBtn = document.getElementById("openBtn");
 
@@ -51,6 +51,7 @@ async function initApp() {
         log("✅ LIFF 初始化完成");
     } catch (e) {
         log("❌ LIFF 初始化失敗：" + e.message);
+        enableButton();
         return;
     }
 
@@ -59,52 +60,46 @@ async function initApp() {
         return liff.login();
     }
 
+    let uid = null;
     log("🔄 取得 LINE 使用者基本資料…");
-
-    let uid;
     try {
         const prof = await liff.getProfile();
         uid = prof.userId;
         log("✅ 使用者 ID：" + uid);
+        localStorage.setItem("line_uid", uid);
     } catch (e) {
-        log("❌ 無法取得使用者 ID：" + e.message);
-        return;
+        log("⚠️ 無法取得使用者 ID：" + e.message);
     }
 
-    log("🔄 嘗試取得 GPS…");
-
     let lat = null, lon = null;
+    log("🔄 嘗試取得 GPS…");
     try {
         const loc = await liff.getCurrentLocation();
         lat = loc.latitude;
         lon = loc.longitude;
         log(`✅ GPS 成功：${lat}, ${lon}`);
-    } catch (e) {
-        log("⚠️ 無法取得 GPS：" + e.message);
-        log("👉 請確認已允許 LINE 定位權限");
-        return;
-    }
-
-    try {
-        localStorage.setItem("line_uid", uid);
         localStorage.setItem("gps_lat", lat);
         localStorage.setItem("gps_lon", lon);
-        log("💾 已寫入 localStorage");
     } catch (e) {
-        log("❌ localStorage 寫入失敗：" + e.message);
-        return;
+        log("⚠️ GPS 失敗：" + e.message);
+        log("👉 可能原因：未授權 LINE 定位、LIFF 未開 device:location、手機定位關閉");
     }
 
-    log("🎉 所有流程完成！");
+    log("🎉 作業完成！可開始遊戲。");
+    enableButton();
+}
+
+function enableButton() {
     openBtn.disabled = false;
 }
 
 openBtn.addEventListener("click", () => {
     log("➡️ 正在跳轉遊戲…");
-    window.location.href = WEBVIEW_URL;   // ⭐ 改為純跳轉，不使用 liff.openWindow
+    window.location.href = WEBVIEW_URL;
 });
 
 initApp();
+
 </script>
 
 </body>
