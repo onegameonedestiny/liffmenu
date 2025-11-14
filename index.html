@@ -1,31 +1,31 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-    <meta charset="UTF-8">
-    <title>LIFF 初始化頁面</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8">
+    <title>LIFF 初始化頁面</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-    <style>
-        body { margin:0; padding:12px; font-family:system-ui; }
-        #logBox {
-            padding:12px; background:#f4f4f4; border-radius:8px;
-            min-height:150px; white-space:pre-line; font-size:14px;
-            border:1px solid #ccc;
-        }
-        #openBtn {
-            width:100%; margin-top:20px; padding:12px;
-            background:#06c755; border:0; color:#fff;
-            border-radius:8px; font-size:16px;
-        }
-    </style>
+    <style>
+        body { margin:0; padding:12px; font-family:system-ui; }
+        #logBox {
+            padding:12px; background:#f4f4f4; border-radius:8px;
+            min-height:150px; white-space:pre-line; font-size:14px;
+            border:1px solid #ccc;
+        }
+        #openBtn {
+            width:100%; margin-top:20px; padding:12px;
+            background:#06c755; border:0; color:#fff;
+            border-radius:8px; font-size:16px;
+        }
+    </style>
 </head>
 <body>
 
 <script>
-    const WEBVIEW_URL = "https://disasterpr.fun/Game/DisasterPR_Beta1.286/index.html";
-    const LIFF_ID = "2008129352-kv8pmz6V";
+    const WEBVIEW_URL = "https://disasterpr.fun/Game/DisasterPR_Beta1.286/index.html";
+    const LIFF_ID = "2008129352-kv8pmz6V";
 </script>
 
 <h3>LIFF 初始化狀態</h3>
@@ -37,69 +37,87 @@
 const logBox = document.getElementById("logBox");
 const openBtn = document.getElementById("openBtn");
 
-function log(msg) {
-    console.log(msg);
-    logBox.textContent += msg + "\n";
+function log(msg) { logBox.textContent += msg + "\n"; }
+
+// ============ Web GPS （優化錯誤處理） ============
+function getWebGPS() {
+    return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+            pos => resolve(pos.coords),
+            err => {
+                let errorMsg;
+                switch (err.code) {
+                    case 1:
+                        errorMsg = "權限拒絕 (CODE 1)：請檢查手機與 LINE App 的位置權限是否開啟。";
+                        break;
+                    case 2:
+                        errorMsg = "位置無效 (CODE 2)：無法偵測到 GPS 訊號，請移動到空曠處。";
+                        break;
+                    case 3:
+                        errorMsg = "定位超時 (CODE 3)：定位時間過久，訊號可能不佳，請重試。";
+                        break;
+                    default:
+                        errorMsg = `未知錯誤 (${err.code}): ${err.message}`;
+                }
+                // 傳遞更詳細的錯誤訊息給外部 catch
+                reject(new Error(errorMsg)); 
+            },
+            { enableHighAccuracy: true, timeout: 8000 }
+        );
+    });
 }
+// ============ Web GPS 結束 ============
+
 
 async function initApp() {
-    log("🔄 初始化 LIFF…");
+    log("🔄 初始化 LIFF…");
 
-    try {
-        await liff.init({ liffId: LIFF_ID });
-        await liff.ready;
-        log("✅ LIFF 初始化完成");
-    } catch (e) {
-        log("❌ LIFF 初始化失敗：" + e.message);
-        enableButton();
-        return;
-    }
+    try {
+        await liff.init({ liffId: LIFF_ID });
+        await liff.ready;
+        log("✅ LIFF 初始化完成");
+    } catch (e) {
+        log("❌ LIFF 初始化失敗：" + e.message);
+        enableButton();
+        return;
+    }
 
-    if (!liff.isLoggedIn()) {
-        log("🔐 未登入，正在導向登入…");
-        return liff.login();
-    }
+    // 取得 UID
+    let uid = null;
+    try {
+        const prof = await liff.getProfile();
+        uid = prof.userId;
+        localStorage.setItem("line_uid", uid);
+        log("✅ 使用者 ID：" + uid);
+    } catch (e) {
+        log("⚠️ 無法取得使用者 ID：" + e.message);
+    }
 
-    let uid = null;
-    log("🔄 取得 LINE 使用者基本資料…");
-    try {
-        const prof = await liff.getProfile();
-        uid = prof.userId;
-        log("✅ 使用者 ID：" + uid);
-        localStorage.setItem("line_uid", uid);
-    } catch (e) {
-        log("⚠️ 無法取得使用者 ID：" + e.message);
-    }
+    // 取得 GPS（Web 版）
+    log("🔄 使用 Web GPS 取得定位…");
+    try {
+        const gps = await getWebGPS();
+        localStorage.setItem("gps_lat", gps.latitude);
+        localStorage.setItem("gps_lon", gps.longitude);
+        log(`✅ GPS：${gps.latitude}, ${gps.longitude} (精準度約 ${Math.round(gps.accuracy)}m)`);
+    } catch (e) {
+        // 這裡會捕捉到我們自定義的詳細錯誤訊息
+        log("⚠️ Web GPS 失敗：" + e.message);
+    }
 
-    let lat = null, lon = null;
-    log("🔄 嘗試取得 GPS…");
-    try {
-        const loc = await liff.getCurrentLocation();
-        lat = loc.latitude;
-        lon = loc.longitude;
-        log(`✅ GPS 成功：${lat}, ${lon}`);
-        localStorage.setItem("gps_lat", lat);
-        localStorage.setItem("gps_lon", lon);
-    } catch (e) {
-        log("⚠️ GPS 失敗：" + e.message);
-        log("👉 可能原因：未授權 LINE 定位、LIFF 未開 device:location、手機定位關閉");
-    }
-
-    log("🎉 作業完成！可開始遊戲。");
-    enableButton();
+    log("🎉 作業完成，可以開始遊戲！");
+    enableButton();
 }
 
 function enableButton() {
-    openBtn.disabled = false;
+    openBtn.disabled = false;
 }
 
 openBtn.addEventListener("click", () => {
-    log("➡️ 正在跳轉遊戲…");
-    window.location.href = WEBVIEW_URL;
+    window.location.href = WEBVIEW_URL;
 });
 
 initApp();
-
 </script>
 
 </body>
