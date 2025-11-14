@@ -9,33 +9,16 @@
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
     <style>
-        body {
-            margin: 0;
-            padding: 12px;
-            font-family: system-ui, sans-serif;
-            background: #fff;
-            font-size: 15px;
-            line-height: 1.5;
-        }
+        body { margin:0; padding:12px; font-family:system-ui; }
         #logBox {
-            width: 100%;
-            min-height: 140px;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            padding: 12px;
-            background: #f7f7f7;
-            white-space: pre-line;
-            font-size: 14px;
-            margin-bottom: 20px;
+            padding:12px; background:#f4f4f4; border-radius:8px;
+            min-height:150px; white-space:pre-line; font-size:14px;
+            border:1px solid #ccc;
         }
         #openBtn {
-            width: 100%;
-            padding: 12px;
-            font-size: 16px;
-            border: none;
-            border-radius: 8px;
-            background: #06c755;
-            color: white;
+            width:100%; margin-top:20px; padding:12px;
+            background:#06c755; border:0; color:#fff;
+            border-radius:8px; font-size:16px;
         }
     </style>
 </head>
@@ -47,9 +30,7 @@
 </script>
 
 <h3>LIFF 初始化狀態</h3>
-
-<div id="logBox">初始化中…</div>
-
+<div id="logBox">準備中…</div>
 <button id="openBtn" disabled>開啟遊戲頁面</button>
 
 <script>
@@ -66,37 +47,41 @@ async function initApp() {
 
     try {
         await liff.init({ liffId: LIFF_ID });
-        log("✅ LIFF 初始化成功");
-
+        await liff.ready;
+        log("✅ LIFF 初始化完成");
     } catch (e) {
         log("❌ LIFF 初始化失敗：" + e.message);
         return;
     }
 
-    log("🔄 取得 LINE 使用者資訊…");
+    if (!liff.isLoggedIn()) {
+        log("🔐 未登入，正在導向登入…");
+        return liff.login();
+    }
 
-    let uid = null;
+    log("🔄 取得 LINE 使用者基本資料…");
+
+    let uid;
     try {
-        const profile = await liff.getProfile();
-        uid = profile.userId;
-        log("✅ 取得 LINE ID：" + uid);
+        const prof = await liff.getProfile();
+        uid = prof.userId;
+        log("✅ 使用者 ID：" + uid);
     } catch (e) {
-        log("❌ 無法取得 LINE ID：" + e.message);
+        log("❌ 無法取得使用者 ID：" + e.message);
         return;
     }
 
-    log("🔄 取得 GPS 定位…");
+    log("🔄 嘗試取得 GPS…");
 
     let lat = null, lon = null;
     try {
         const loc = await liff.getCurrentLocation();
         lat = loc.latitude;
         lon = loc.longitude;
-
-        log(`✅ GPS：${lat}, ${lon}`);
-
+        log(`✅ GPS 成功：${lat}, ${lon}`);
     } catch (e) {
-        log("❌ GPS 取得失敗：" + e.message);
+        log("⚠️ 無法取得 GPS：" + e.message);
+        log("👉 請確認已允許 LINE 定位權限");
         return;
     }
 
@@ -104,22 +89,19 @@ async function initApp() {
         localStorage.setItem("line_uid", uid);
         localStorage.setItem("gps_lat", lat);
         localStorage.setItem("gps_lon", lon);
-
-        log("✅ 已寫入 localStorage");
-        log("🎉 所有流程完成！");
-
-        openBtn.disabled = false;
-
+        log("💾 已寫入 localStorage");
     } catch (e) {
-        log("❌ 無法寫入 localStorage：" + e.message);
+        log("❌ localStorage 寫入失敗：" + e.message);
+        return;
     }
+
+    log("🎉 所有流程完成！");
+    openBtn.disabled = false;
 }
 
 openBtn.addEventListener("click", () => {
-    liff.openWindow({
-        url: WEBVIEW_URL,
-        external: false
-    });
+    log("➡️ 正在跳轉遊戲…");
+    window.location.href = WEBVIEW_URL;   // ⭐ 改為純跳轉，不使用 liff.openWindow
 });
 
 initApp();
