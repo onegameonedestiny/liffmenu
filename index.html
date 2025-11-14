@@ -114,7 +114,12 @@ function enableButton() {
 }
 
 openBtn.addEventListener("click", () => {
-    window.location.href = WEBVIEW_URL;
+    //window.location.href = WEBVIEW_URL;
+  liff.openWindow({
+  url: WEBVIEW_URL,
+  external: true
+});
+
 });
 
 initApp();
