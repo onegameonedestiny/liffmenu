@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>LIFF 初始化頁面</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- LINE LIFF SDK -->
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 12px;
+            font-family: system-ui, sans-serif;
+            background: #fff;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+        #logBox {
+            width: 100%;
+            min-height: 140px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 12px;
+            background: #f7f7f7;
+            white-space: pre-line;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        #openBtn {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            background: #06c755;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+
+<script>
+    const WEBVIEW_URL = "https://disasterpr.fun/Game/DisasterPR_Beta1.286/index.html";
+    const LIFF_ID = "YOUR_LIFF_ID";
+</script>
+
+<h3>LIFF 初始化狀態</h3>
+
+<div id="logBox">初始化中…</div>
+
+<button id="openBtn" disabled>開啟遊戲頁面</button>
+
+<script>
+const logBox = document.getElementById("logBox");
+const openBtn = document.getElementById("openBtn");
+
+function log(msg) {
+    console.log(msg);
+    logBox.textContent += msg + "\n";
+}
+
+async function initApp() {
+    log("🔄 初始化 LIFF…");
+
+    try {
+        await liff.init({ liffId: LIFF_ID });
+        log("✅ LIFF 初始化成功");
+
+    } catch (e) {
+        log("❌ LIFF 初始化失敗：" + e.message);
+        return;
+    }
+
+    log("🔄 取得 LINE 使用者資訊…");
+
+    let uid = null;
+    try {
+        const profile = await liff.getProfile();
+        uid = profile.userId;
+        log("✅ 取得 LINE ID：" + uid);
+    } catch (e) {
+        log("❌ 無法取得 LINE ID：" + e.message);
+        return;
+    }
+
+    log("🔄 取得 GPS 定位…");
+
+    let lat = null, lon = null;
+    try {
+        const loc = await liff.getCurrentLocation();
+        lat = loc.latitude;
+        lon = loc.longitude;
+
+        log(`✅ GPS：${lat}, ${lon}`);
+
+    } catch (e) {
+        log("❌ GPS 取得失敗：" + e.message);
+        return;
+    }
+
+    try {
+        localStorage.setItem("line_uid", uid);
+        localStorage.setItem("gps_lat", lat);
+        localStorage.setItem("gps_lon", lon);
+
+        log("✅ 已寫入 localStorage");
+        log("🎉 所有流程完成！");
+
+        openBtn.disabled = false;
+
+    } catch (e) {
+        log("❌ 無法寫入 localStorage：" + e.message);
+    }
+}
+
+openBtn.addEventListener("click", () => {
+    liff.openWindow({
+        url: WEBVIEW_URL,
+        external: false
+    });
+});
+
+initApp();
+</script>
+
+</body>
+</html>
