@@ -2,13 +2,13 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>Cyberpunk Map</title>
+    <title>LIFF 啟動頁面</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <!-- LIFF SDK -->
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-    <!-- Leaflet -->
+    <!-- Leaflet Map -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -16,8 +16,8 @@
 body {
     margin:0; padding:20px;
     font-family:"Noto Sans TC",system-ui;
-    background:#0a0c10;
-    color:#e0e0e0;
+    background:#ffffff;
+    color:#333;
 }
 
 .container { max-width:480px; margin:0 auto; }
@@ -31,113 +31,37 @@ body {
 .title img { width:28px; height:28px; margin-right:8px; }
 
 #logBox {
-    background:rgba(15,18,25,0.85);
+    background:#f3f3f3;
     padding:15px;
     border-radius:12px;
-    border:1px solid #2d3340;
-    min-height:150px;
-    max-height:230px;
-    overflow-y:auto;
+    border:1px solid #ddd;
+    min-height:120px;
     white-space:pre-line;
     font-size:14px;
-    color:#99eaff;
-    box-shadow:0 0 15px rgba(0,200,255,0.25);
 }
 
-/* 地圖容器 */
 #map {
-    position: relative;
-    width: 100%;
-    height: 300px;
-    margin-top:18px;
+    width:100%;
+    height:300px;
+    margin-top:15px;
     border-radius:12px;
     overflow:hidden;
-    background:#000;
-}
-
-/* Fog of War */
-#fog {
-    position:absolute;
-    top:0; left:0;
-    width:100%; height:100%;
-    pointer-events:none;
-}
-
-/* 電子干擾粒子 */
-#particleLayer {
-    position:absolute;
-    top:0; left:0;
-    width:100%; height:100%;
-    pointer-events:none;
-}
-.particle {
-    position:absolute;
-    width:2px; height:2px;
-    background:#00eaff;
-    opacity:0.6;
-    animation: particleMove 1.5s linear infinite;
-}
-@keyframes particleMove {
-    from { transform:translateY(0px); opacity:0.6; }
-    to   { transform:translateY(25px); opacity:0; }
-}
-
-/* 掃描光束 */
-#scanner {
-    position: absolute;
-    top: -100%;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(
-        rgba(0,255,255,0.18) 0%,
-        rgba(0,255,255,0) 70%
-    );
-    animation: scanMove 3.5s linear infinite;
-    pointer-events: none;
-    mix-blend-mode: screen;
-}
-@keyframes scanMove {
-    0%   { top:-100%; }
-    100% { top:100%; }
-}
-
-/* 掃描線 Scanlines */
-#scanlines {
-    position:absolute;
-    top:0; left:0;
-    width:100%; height:100%;
-    pointer-events:none;
-    background: repeating-linear-gradient(
-        to bottom,
-        rgba(255,255,255,0.05) 0px,
-        rgba(255,255,255,0.05) 1px,
-        rgba(0,0,0,0.25) 2px,
-        rgba(0,0,0,0.25) 3px
-    );
-    animation: flicker 2s infinite linear;
-    mix-blend-mode: overlay;
-}
-@keyframes flicker {
-    0%   { opacity:0.18; }
-    50%  { opacity:0.33; }
-    100% { opacity:0.18; }
 }
 
 /* 按鈕 */
-#openBtn {
-    width:100%; margin-top:22px;
+.btn {
+    width:100%;
+    margin-top:18px;
     padding:14px;
     background:#06c755;
     border:0;
     color:#fff;
     border-radius:10px;
-    font-size:17px; font-weight:600;
-    box-shadow:0 3px 10px rgba(6,199,85,0.35);
+    font-size:16px;
+    font-weight:600;
 }
-#openBtn:disabled {
-    background:#3f6f52;
-    box-shadow:none;
+.btn:disabled {
+    background:#8acfa6;
 }
 </style>
 </head>
@@ -153,14 +77,13 @@ body {
     <div id="logBox">🔄 準備中…</div>
 
     <!-- 地圖 -->
-    <div id="map">
-        <canvas id="fog"></canvas>
-        <div id="particleLayer"></div>
-        <div id="scanner"></div>
-        <div id="scanlines"></div>
-    </div>
+    <div id="map"></div>
 
-    <button id="openBtn" disabled>開啟遊戲頁面</button>
+    <!-- 第 1 個按鈕：帶 UID 與狀態 -->
+    <button id="btnProfile" class="btn" disabled>進入遊戲（帶使用者 ID）</button>
+
+    <!-- 第 2 個按鈕：帶 GPS -->
+    <button id="btnGPS" class="btn" disabled>進入遊戲（帶 GPS）</button>
 
 </div>
 
@@ -168,11 +91,16 @@ body {
 /* ===========================
    基礎設定
 =========================== */
-const WEBVIEW_URL = "https://www.deepdreamgame.tw/water/";
+const BASE_URL = "https://www.deepdreamgame.tw/water/";
 const LIFF_ID = "2008129352-kv8pmz6V";
 
 const logBox = document.getElementById("logBox");
-function log(msg){ logBox.textContent += msg + "\n";}
+function log(msg){ logBox.textContent += msg + "\n"; }
+
+let USER_ID = null;
+let USER_STATE = "normal";
+let LAT = null;
+let LON = null;
 
 /* ===========================
    Web GPS
@@ -199,103 +127,90 @@ async function initApp(){
         log("✅ LIFF 初始化完成");
     } catch(e){
         log("❌ LIFF 初始化失敗："+e.message);
-        enableButton();
+        enableButtons();
         return;
     }
 
-    // 取得 LINE ID
+    /* ==== 取得 UID ==== */
     try{
         const prof = await liff.getProfile();
-        localStorage.setItem("line_uid", prof.userId);
-        log("👤 使用者 ID： "+prof.userId);
+        USER_ID = prof.userId;
+        log("👤 使用者 ID： "+USER_ID);
     } catch(e){
         log("⚠️ 無法取得使用者 ID："+e.message);
     }
 
-    // GPS
-    let lat=25.04, lon=121.56;
+    /* ==== GPS ==== */
     log("📍 嘗試取得 GPS…");
 
     try{
         const gps = await getWebGPS();
-        lat = gps.latitude;
-        lon = gps.longitude;
-        log("📌 座標："+lat+", "+lon);
+        LAT = gps.latitude;
+        LON = gps.longitude;
+        log("📌 座標："+LAT+", "+LON);
     } catch(e){
         log("⚠️ GPS 失敗："+e.message);
+        LAT = 25.04;
+        LON = 121.56;
     }
 
-    initMap(lat, lon);
-    log("🎉 完成初始化");
-    enableButton();
+    initMap(LAT, LON);
+
+    log("🎉 初始化完成");
+    enableButtons();
 }
 
 /* ===========================
-   建立地圖 + Cyberpunk 效果
+   地圖
 =========================== */
 function initMap(lat, lon){
-    log("🗺️ 建立地圖…");
 
-    const map = L.map("map").setView([lat,lon],17);
+    // 亮色高辨識地圖（非深色）
+    const map = L.map("map").setView([lat, lon], 17);
 
-    // 高辨識地圖（街道清楚）
     L.tileLayer(
-        "https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-        {maxZoom:19}
+        "https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+        { maxZoom: 19 }
     ).addTo(map);
 
-    // 標記玩家
-    L.marker([lat,lon]).addTo(map).bindPopup("你在這裡").openPopup();
-
-    /* ========= Fog of War ========= */
-    const fog = document.getElementById("fog");
-    const ctx = fog.getContext("2d");
-
-    function drawFog(){
-        const w = fog.width  = fog.offsetWidth;
-        const h = fog.height = fog.offsetHeight;
-
-        // 黑霧
-        ctx.fillStyle = "rgba(0,0,0,0.65)";
-        ctx.fillRect(0,0,w,h);
-
-        // 玩家亮圈
-        const R = 120;
-        const grd = ctx.createRadialGradient(w/2,h/2,10,w/2,h/2,R);
-        grd.addColorStop(0,"rgba(0,0,0,0)");
-        grd.addColorStop(1,"rgba(0,0,0,0.65)");
-
-        ctx.globalCompositeOperation="destination-out";
-        ctx.fillStyle = grd;
-        ctx.fillRect(0,0,w,h);
-        ctx.globalCompositeOperation="source-over";
-    }
-    drawFog();
-
-    map.on("move", drawFog);
-    map.on("zoom", drawFog);
-
-    /* ========= 電子干擾粒子 ========= */
-    const layer = document.getElementById("particleLayer");
-    for(let i=0;i<40;i++){
-        const p = document.createElement("div");
-        p.className="particle";
-        p.style.left = Math.random()*100+"%";
-        p.style.top  = Math.random()*100+"%";
-        p.style.animationDelay = Math.random()*2+"s";
-        layer.appendChild(p);
-    }
+    L.marker([lat,lon]).addTo(map)
+        .bindPopup("你在這裡")
+        .openPopup();
 }
 
 /* ===========================
    按鈕
 =========================== */
-function enableButton(){ document.getElementById("openBtn").disabled=false; }
+function enableButtons(){
+    document.getElementById("btnProfile").disabled = false;
+    document.getElementById("btnGPS").disabled = false;
+}
 
-document.getElementById("openBtn").addEventListener("click",()=>{
-    liff.openWindow({url:WEBVIEW_URL, external:true});
+/* === 第一個按鈕：帶 UID + 狀態 === */
+document.getElementById("btnProfile").addEventListener("click", ()=>{
+
+    const url =
+        BASE_URL + 
+        "?uid=" + encodeURIComponent(USER_ID) +
+        "&state=" + encodeURIComponent(USER_STATE);
+
+    window.location.href = url;
 });
 
+/* === 第二個按鈕：帶 GPS === */
+document.getElementById("btnGPS").addEventListener("click", ()=>{
+
+    const url =
+        BASE_URL +
+        "?lat=" + encodeURIComponent(LAT) +
+        "&lon=" + encodeURIComponent(LON);
+
+    window.location.href = url;
+});
+
+/* ===========================
+   啟動
+=========================== */
 initApp();
 </script>
 
