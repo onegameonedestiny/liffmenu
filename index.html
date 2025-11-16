@@ -159,7 +159,7 @@ document.getElementById("btnStart").addEventListener("click", async ()=>{
 
     try {
         log("🔍 查詢玩家註冊資料中...");
-        const docRef = firestore.collection("playerdata").doc(LINE_ID);
+        const docRef = firestore.collection("player_line").doc(LINE_ID);
         const docSnap = await docRef.get();
 
         if (!docSnap.exists) {
