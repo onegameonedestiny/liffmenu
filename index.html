@@ -31,11 +31,11 @@ body {
 .title img { width:28px; height:28px; margin-right:8px; }
 
 #logBox {
-    background:#f3f3f3;
+    background:#f9f9f9;
     padding:15px;
     border-radius:12px;
     border:1px solid #ddd;
-    min-height:120px;
+    min-height:140px;
     white-space:pre-line;
     font-size:14px;
 }
@@ -48,7 +48,6 @@ body {
     overflow:hidden;
 }
 
-/* 按鈕 */
 .btn {
     width:100%;
     margin-top:18px;
@@ -71,7 +70,7 @@ body {
 
     <div class="title">
         <img src="https://scdn.line-apps.com/n/line_register/img/logo_line.png">
-        LIFF 初始化
+        LIFF 啟動頁面
     </div>
 
     <div id="logBox">🔄 準備中…</div>
@@ -79,11 +78,8 @@ body {
     <!-- 地圖 -->
     <div id="map"></div>
 
-    <!-- 第 1 個按鈕：帶 UID 與狀態 -->
-    <button id="btnProfile" class="btn" disabled>進入遊戲（帶使用者 ID）</button>
-
-    <!-- 第 2 個按鈕：帶 GPS -->
-    <button id="btnGPS" class="btn" disabled>進入遊戲（帶 GPS）</button>
+    <!-- 進入按鈕 -->
+    <button id="btnEnter" class="btn" disabled>進入遊戲</button>
 
 </div>
 
@@ -98,9 +94,11 @@ const logBox = document.getElementById("logBox");
 function log(msg){ logBox.textContent += msg + "\n"; }
 
 let USER_ID = null;
-let USER_STATE = "normal";
+let USER_STATE = "玩家準備中…"; // 玩家輸入或遊戲內判斷
 let LAT = null;
 let LON = null;
+let ACCURACY = null;
+let ROAD = "未知道路";
 
 /* ===========================
    Web GPS
@@ -116,6 +114,20 @@ function getWebGPS(){
 }
 
 /* ===========================
+   反查道路名稱 (Nominatim)
+=========================== */
+async function reverseGeocode(lat, lon) {
+    try {
+        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=zh-TW`;
+        const response = await fetch(url);
+        const data = await response.json();
+        return data.address?.road || data.address?.footway || "未知道路";
+    } catch (e) {
+        return "無法獲取道路資訊";
+    }
+}
+
+/* ===========================
    初始化 LIFF
 =========================== */
 async function initApp(){
@@ -127,7 +139,7 @@ async function initApp(){
         log("✅ LIFF 初始化完成");
     } catch(e){
         log("❌ LIFF 初始化失敗："+e.message);
-        enableButtons();
+        enableButton();
         return;
     }
 
@@ -147,17 +159,24 @@ async function initApp(){
         const gps = await getWebGPS();
         LAT = gps.latitude;
         LON = gps.longitude;
-        log("📌 座標："+LAT+", "+LON);
+        ACCURACY = gps.accuracy;
+
+        log(`📌 座標：${LAT.toFixed(6)}, ${LON.toFixed(6)}`);
+        log(`📏 誤差：約 ${Math.round(ACCURACY)} 公尺`);
+
+        ROAD = await reverseGeocode(LAT, LON);
+        log(`🛣️ 所在道路：${ROAD}`);
     } catch(e){
         log("⚠️ GPS 失敗："+e.message);
         LAT = 25.04;
         LON = 121.56;
+        ACCURACY = 999;
+        ROAD = "無法定位";
     }
 
     initMap(LAT, LON);
 
-    log("🎉 初始化完成");
-    enableButtons();
+    enableButton();
 }
 
 /* ===========================
@@ -165,7 +184,7 @@ async function initApp(){
 =========================== */
 function initMap(lat, lon){
 
-    // 亮色高辨識地圖（非深色）
+    // 明亮高辨識地圖
     const map = L.map("map").setView([lat, lon], 17);
 
     L.tileLayer(
@@ -174,36 +193,25 @@ function initMap(lat, lon){
     ).addTo(map);
 
     L.marker([lat,lon]).addTo(map)
-        .bindPopup("發訊位置")
+        .bindPopup(`你在這裡！<br>${ROAD}<br>誤差：約 ${Math.round(ACCURACY)} 公尺`)
         .openPopup();
 }
 
 /* ===========================
    按鈕
 =========================== */
-function enableButtons(){
-    document.getElementById("btnProfile").disabled = false;
-    document.getElementById("btnGPS").disabled = false;
+function enableButton(){
+    document.getElementById("btnEnter").disabled = false;
 }
 
-/* === 第一個按鈕：帶 UID + 狀態 === */
-document.getElementById("btnProfile").addEventListener("click", ()=>{
+document.getElementById("btnEnter").addEventListener("click", ()=>{
 
     const url =
         BASE_URL + 
         "?uid=" + encodeURIComponent(USER_ID) +
-        "&state=" + encodeURIComponent(USER_STATE);
-
-    window.location.href = url;
-});
-
-/* === 第二個按鈕：帶 GPS === */
-document.getElementById("btnGPS").addEventListener("click", ()=>{
-
-    const url =
-        BASE_URL +
-        "?lat=" + encodeURIComponent(LAT) +
-        "&lon=" + encodeURIComponent(LON);
+        "&state=" + encodeURIComponent(USER_STATE) +
+        "&road=" + encodeURIComponent(ROAD) +
+        "&acc=" + encodeURIComponent(ACCURACY);
 
     window.location.href = url;
 });
