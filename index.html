@@ -8,9 +8,9 @@
     <!-- LIFF SDK -->
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-    <!-- Leaflet Map -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
 
 <style>
 body {
@@ -35,17 +35,9 @@ body {
     padding:15px;
     border-radius:12px;
     border:1px solid #ddd;
-    min-height:160px;
+    min-height:140px;
     white-space:pre-line;
     font-size:14px;
-}
-
-#map {
-    width:100%;
-    height:300px;
-    margin-top:15px;
-    border-radius:12px;
-    overflow:hidden;
 }
 
 .btn {
@@ -75,11 +67,11 @@ body {
 
     <div id="logBox">🔄 準備中…</div>
 
-    <!-- 地圖 -->
-    <div id="map"></div>
+    <!-- 註冊按鈕 -->
+    <button id="btnRegister" class="btn" disabled>🔰 註冊</button>
 
-    <!-- 進入按鈕 -->
-    <button id="btnEnter" class="btn" disabled>進入遊戲</button>
+    <!-- 登入按鈕 -->
+    <button id="btnStart" class="btn" disabled>🚀 開始遊戲</button>
 
 </div>
 
@@ -87,62 +79,15 @@ body {
 /* ===========================
    基礎設定
 =========================== */
-const BASE_URL = "https://www.deepdreamgame.tw/endgame/";
+const BASE_URL_REGISTER = "https://www.deepdreamgame.tw/register/";
+const BASE_URL_START = "https://www.deepdreamgame.tw/endgame/";
 const LIFF_ID = "2008129352-kv8pmz6V";
 
 const logBox = document.getElementById("logBox");
 function log(msg){ logBox.textContent += msg + "\n"; }
 
-let profileData = {};
-let LAT = null;
-let LON = null;
-let ACCURACY = null;
-let ROAD = "未知道路";
-
-/* ===========================
-   取得使用者資料
-=========================== */
-async function getUserProfile() {
-    try {
-        const profile = await liff.getProfile();
-        return {
-            userId: profile.userId,
-            displayName: profile.displayName,
-            pictureUrl: profile.pictureUrl,
-            statusMessage: profile.statusMessage || "未設定狀態"
-        };
-    } catch (error) {
-        log("❌ 無法取得使用者資料：" + error.message);
-        return null;
-    }
-}
-
-/* ===========================
-   Web GPS
-=========================== */
-function getWebGPS(){
-    return new Promise((resolve,reject)=>{
-        navigator.geolocation.getCurrentPosition(
-            pos=>resolve(pos.coords),
-            err=>reject(err),
-            {enableHighAccuracy:true, timeout:8000}
-        );
-    });
-}
-
-/* ===========================
-   反查道路名稱 (Nominatim)
-=========================== */
-async function reverseGeocode(lat, lon) {
-    try {
-        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=zh-TW`;
-        const response = await fetch(url);
-        const data = await response.json();
-        return data.address?.road || data.address?.footway || "未知道路";
-    } catch (e) {
-        return "無法獲取道路資訊";
-    }
-}
+let LINE_ID = null;
+let firestore = null;
 
 /* ===========================
    初始化 LIFF
@@ -156,110 +101,99 @@ async function initApp(){
         log("📲 LIFF 初始化完成");
     } catch(e){
         log("❌ LIFF 初始化失敗："+e.message);
-        enableButton();
+        enableButtons(false);
         return;
     }
 
-    // 取得使用者資料
-    profileData = await getUserProfile();
-    if (profileData) {
-        log(`👤 使用者：${profileData.displayName}`);
-        log(`🆔 ID：${profileData.userId}`);
-        log(`🖼️ 頭像：${profileData.pictureUrl}`);
-        log(`💬 狀態：${profileData.statusMessage}`);
+    // 取得 LINE 使用者資訊
+    try {
+        const prof = await liff.getProfile();
+        LINE_ID = prof.userId;
+        log(`👤 使用者 ID：${LINE_ID}`);
+    } catch(e) {
+        log("⚠️ 無法取得使用者 ID："+e.message);
+        return;
     }
 
-    // 取得 GPS
-    log("📍 嘗試取得 GPS…");
-    try{
-        const gps = await getWebGPS();
-        LAT = gps.latitude;
-        LON = gps.longitude;
-        ACCURACY = gps.accuracy;
+    // 初始化 Firebase
+    initFirebase();
 
-        log(`📌 座標：${LAT.toFixed(6)}, ${LON.toFixed(6)}`);
-        log(`📏 誤差：約 ${Math.round(ACCURACY)} 公尺`);
-
-        ROAD = await reverseGeocode(LAT, LON);
-        log(`🛣️ 所在道路：${ROAD}`);
-    } catch(e){
-        log("⚠️ GPS 失敗："+e.message);
-        LAT = 25.04;
-        LON = 121.56;
-        ACCURACY = 999;
-        ROAD = "無法定位";
-    }
-
-    initMap(LAT, LON);
-    enableButton();
+    enableButtons(true);
 }
 
 /* ===========================
-   地圖
+   Firebase
 =========================== */
-function initMap(lat, lon){
+function initFirebase() {
+    const firebaseConfig = {
+        apiKey: "AIzaSyCK7sNXMML-IA_ZjaiAOXyN8ftCrLn39uA",
+        authDomain: "theendoftheworld.firebaseapp.com",
+        projectId: "theendoftheworld",
+    };
 
-    const map = L.map("map").setView([lat, lon], 17);
-
-    L.tileLayer(
-        "https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-        { maxZoom: 19 }
-    ).addTo(map);
-
-    L.marker([lat,lon]).addTo(map)
-        .bindPopup(`你在這裡！<br>${ROAD}<br>誤差：約 ${Math.round(ACCURACY)} 公尺`)
-        .openPopup();
+    firebase.initializeApp(firebaseConfig);
+    firestore = firebase.firestore();
+    log("🔥 Firebase 已初始化");
 }
 
 /* ===========================
-   全螢幕後導頁
+   按鈕啟用/停用
 =========================== */
-async function enterFullscreenAndRedirect(url) {
-    const docEl = document.documentElement;
+function enableButtons(enable){
+    document.getElementById("btnRegister").disabled = !enable;
+    document.getElementById("btnStart").disabled = !enable;
+}
 
-    if (docEl.requestFullscreen) {
-        try {
-            await docEl.requestFullscreen();
-            log("🖥️ 已進入全螢幕");
-        } catch (e) {
-            log("⚠️ 全螢幕失敗：" + e.message);
+/* ===========================
+   註冊功能
+=========================== */
+document.getElementById("btnRegister").addEventListener("click", ()=>{
+    const url = `${BASE_URL_REGISTER}?lineid=${encodeURIComponent(LINE_ID)}`;
+    window.location.href = url;
+});
+
+/* ===========================
+   開始遊戲功能（查 Firebase 資料）
+=========================== */
+document.getElementById("btnStart").addEventListener("click", async ()=>{
+
+    try {
+        log("🔍 查詢玩家註冊資料中...");
+        const docRef = firestore.collection("playerdata").doc(LINE_ID);
+        const docSnap = await docRef.get();
+
+        if (!docSnap.exists) {
+            log("❌ 未註冊！請先點擊【註冊】按鈕");
+            return;
         }
-    } else {
-        log("⚠️ 此裝置不支援全螢幕 API");
-    }
 
-    setTimeout(() => {
+        log("📦 找到玩家資料，解析中...");
+
+        const data = docSnap.data();
+
+        if (!data.playkey) {
+            log("⚠️ playkey 欄位不存在！");
+            return;
+        }
+
+        const playkey = data.playkey;
+
+        log(`🎯 playkey = ${playkey}`);
+        log(`🚀 準備開啟遊戲頁...`);
+
+        const url = `${BASE_URL_START}?lineid=${encodeURIComponent(LINE_ID)}&playkey=${encodeURIComponent(playkey)}`;
         window.location.href = url;
-    }, 300);
-}
 
-/* ===========================
-   按鈕
-=========================== */
-function enableButton(){
-    document.getElementById("btnEnter").disabled = false;
-}
-
-document.getElementById("btnEnter").addEventListener("click", ()=>{
-
-    const url =
-        BASE_URL +
-        "?uid=" + encodeURIComponent(profileData.userId) +
-        "&name=" + encodeURIComponent(profileData.displayName) +
-        "&pic=" + encodeURIComponent(profileData.pictureUrl) +
-        "&status=" + encodeURIComponent(profileData.statusMessage) +
-        "&lat=" + encodeURIComponent(LAT) +
-        "&lon=" + encodeURIComponent(LON) +
-        "&acc=" + encodeURIComponent(ACCURACY) +
-        "&road=" + encodeURIComponent(ROAD);
-
-    enterFullscreenAndRedirect(url);
+    } catch (e) {
+        log("❌ 查詢失敗：" + e.message);
+    }
 });
 
 /* ===========================
    啟動
 =========================== */
 initApp();
+
 </script>
 
 </body>
