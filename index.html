@@ -35,7 +35,7 @@ body {
     padding:15px;
     border-radius:12px;
     border:1px solid #ddd;
-    min-height:140px;
+    min-height:160px;
     white-space:pre-line;
     font-size:14px;
 }
@@ -93,12 +93,29 @@ const LIFF_ID = "2008129352-kv8pmz6V";
 const logBox = document.getElementById("logBox");
 function log(msg){ logBox.textContent += msg + "\n"; }
 
-let USER_ID = null;
-let USER_STATE = "玩家準備中…"; // 玩家輸入或遊戲內判斷
+let profileData = {};
 let LAT = null;
 let LON = null;
 let ACCURACY = null;
 let ROAD = "未知道路";
+
+/* ===========================
+   取得使用者資料
+=========================== */
+async function getUserProfile() {
+    try {
+        const profile = await liff.getProfile();
+        return {
+            userId: profile.userId,
+            displayName: profile.displayName,
+            pictureUrl: profile.pictureUrl,
+            statusMessage: profile.statusMessage || "未設定狀態"
+        };
+    } catch (error) {
+        log("❌ 無法取得使用者資料：" + error.message);
+        return null;
+    }
+}
 
 /* ===========================
    Web GPS
@@ -136,25 +153,24 @@ async function initApp(){
     try {
         await liff.init({liffId:LIFF_ID});
         await liff.ready;
-        log("✅ LIFF 初始化完成");
+        log("📲 LIFF 初始化完成");
     } catch(e){
         log("❌ LIFF 初始化失敗："+e.message);
         enableButton();
         return;
     }
 
-    /* ==== 取得 UID ==== */
-    try{
-        const prof = await liff.getProfile();
-        USER_ID = prof.userId;
-        log("👤 使用者 ID： "+USER_ID);
-    } catch(e){
-        log("⚠️ 無法取得使用者 ID："+e.message);
+    // 取得使用者資料
+    profileData = await getUserProfile();
+    if (profileData) {
+        log(`👤 使用者：${profileData.displayName}`);
+        log(`🆔 ID：${profileData.userId}`);
+        log(`🖼️ 頭像：${profileData.pictureUrl}`);
+        log(`💬 狀態：${profileData.statusMessage}`);
     }
 
-    /* ==== GPS ==== */
+    // 取得 GPS
     log("📍 嘗試取得 GPS…");
-
     try{
         const gps = await getWebGPS();
         LAT = gps.latitude;
@@ -175,7 +191,6 @@ async function initApp(){
     }
 
     initMap(LAT, LON);
-
     enableButton();
 }
 
@@ -184,7 +199,6 @@ async function initApp(){
 =========================== */
 function initMap(lat, lon){
 
-    // 明亮高辨識地圖
     const map = L.map("map").setView([lat, lon], 17);
 
     L.tileLayer(
@@ -198,6 +212,28 @@ function initMap(lat, lon){
 }
 
 /* ===========================
+   全螢幕後導頁
+=========================== */
+async function enterFullscreenAndRedirect(url) {
+    const docEl = document.documentElement;
+
+    if (docEl.requestFullscreen) {
+        try {
+            await docEl.requestFullscreen();
+            log("🖥️ 已進入全螢幕");
+        } catch (e) {
+            log("⚠️ 全螢幕失敗：" + e.message);
+        }
+    } else {
+        log("⚠️ 此裝置不支援全螢幕 API");
+    }
+
+    setTimeout(() => {
+        window.location.href = url;
+    }, 300);
+}
+
+/* ===========================
    按鈕
 =========================== */
 function enableButton(){
@@ -207,13 +243,17 @@ function enableButton(){
 document.getElementById("btnEnter").addEventListener("click", ()=>{
 
     const url =
-        BASE_URL + 
-        "?uid=" + encodeURIComponent(USER_ID) +
-        "&state=" + encodeURIComponent(USER_STATE) +
-        "&road=" + encodeURIComponent(ROAD) +
-        "&acc=" + encodeURIComponent(ACCURACY);
+        BASE_URL +
+        "?uid=" + encodeURIComponent(profileData.userId) +
+        "&name=" + encodeURIComponent(profileData.displayName) +
+        "&pic=" + encodeURIComponent(profileData.pictureUrl) +
+        "&status=" + encodeURIComponent(profileData.statusMessage) +
+        "&lat=" + encodeURIComponent(LAT) +
+        "&lon=" + encodeURIComponent(LON) +
+        "&acc=" + encodeURIComponent(ACCURACY) +
+        "&road=" + encodeURIComponent(ROAD);
 
-    window.location.href = url;
+    enterFullscreenAndRedirect(url);
 });
 
 /* ===========================
