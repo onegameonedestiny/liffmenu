@@ -171,17 +171,17 @@ document.getElementById("btnStart").addEventListener("click", async ()=>{
 
         const data = docSnap.data();
 
-        if (!data.playkey) {
-            log("⚠️ playkey 欄位不存在！");
+        if (!data.plykey) {
+            log("⚠️ plykey 欄位不存在！");
             return;
         }
 
-        const playkey = data.playkey;
+        const plykey = data.plykey;
 
         log(`🎯 playkey = ${playkey}`);
         log(`🚀 準備開啟遊戲頁...`);
 
-        const url = `${BASE_URL_START}?lineid=${encodeURIComponent(LINE_ID)}&playkey=${encodeURIComponent(playkey)}`;
+        const url = `${BASE_URL_START}?lineid=${encodeURIComponent(LINE_ID)}&plykey=${encodeURIComponent(plykey)}`;
         window.location.href = url;
 
     } catch (e) {
